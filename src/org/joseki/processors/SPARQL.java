@@ -18,7 +18,11 @@ import org.joseki.util.GraphUtils;
 import com.hp.hpl.jena.query.*;
 import com.hp.hpl.jena.rdf.model.*;
 import com.hp.hpl.jena.shared.*;
+import com.hp.hpl.jena.datatypes.RDFDatatype;
+import com.hp.hpl.jena.datatypes.xsd.XSDDatatype;
 import com.hp.hpl.jena.util.FileManager;
+
+import com.hp.hpl.jena.sparql.util.Symbol;
 
 public class SPARQL extends ProcessorBase implements Loadable
 {
@@ -41,6 +45,7 @@ public class SPARQL extends ProcessorBase implements Loadable
     public static final String P_QUERY_REF      = "query-uri" ;
     public static final String P_NAMED_GRAPH    = "named-graph-uri" ;
     public static final String P_DEFAULT_GRAPH  = "default-graph-uri" ;
+    public static final String P_API_KEY        = "apikey" ;
     
     protected boolean allowDatasetDesc = false ;
     protected boolean allowWebLoading  = false ;
@@ -271,11 +276,56 @@ public class SPARQL extends ProcessorBase implements Loadable
         if ( !useQueryDesc && dataset == null )
                 dataset = defaultDataset ;
 
+        QuerySolutionMap qsm = new QuerySolutionMap();
+
+        for (Iterator<String> it = request.parameterNames(); it.hasNext(); ) {
+            String param = it.next();
+
+            if (!param.equals(P_QUERY) && !param.equals(P_QUERY_REF) && !param.equals(P_API_KEY)
+                && !param.equals(P_NAMED_GRAPH) && !param.equals(P_DEFAULT_GRAPH)
+                && !param.startsWith("%") && !param.endsWith("_type")) {
+
+                String value = request.getParam(param);
+                String typeStr = request.getParam(param + "_type");
+                RDFDatatype type = null;
+                if (typeStr == null)
+                    ;
+                else if (typeStr.equals("string"))
+                    type = XSDDatatype.XSDstring;
+                else if (typeStr.equals("integer"))
+                    type = XSDDatatype.XSDinteger;
+                else if (typeStr.equals("anyURI"))
+                    type = XSDDatatype.XSDanyURI;
+                else if (typeStr.equals("boolean"))
+                    type = XSDDatatype.XSDboolean;
+                else if (typeStr.equals("decimal"))
+                    type = XSDDatatype.XSDdecimal;
+                else if (typeStr.equals("dateTime"))
+                    type = XSDDatatype.XSDdateTime;
+                else if (typeStr.equals("date"))
+                    type = XSDDatatype.XSDdate;
+                else if (typeStr.equals("float"))
+                    type = XSDDatatype.XSDfloat;
+                else if (typeStr.equals("double"))
+                    type = XSDDatatype.XSDdouble;
+
+                Literal lit = null;
+                if (type == null)
+                    lit = dataset.getDefaultModel().createLiteral(value, false);
+                else
+                    lit = dataset.getDefaultModel().createTypedLiteral(value, type);
+                qsm.add(param, lit);
+            }
+        }
+
+        String apiKey = request.getParam(P_API_KEY);
+
         if ( useQueryDesc )
             // If using query description, ignore dataset
             dataset = null ;
         
-        final QueryExecution qexec = getQueryExecution(query, dataset) ;
+        final QueryExecution qexec = getQueryExecution(query, dataset, qsm);
+        qexec.getContext().set(Symbol.create("apikey"), apiKey);
         ResponseCallback cb = new ResponseCallback(){
 
             public void callback(boolean successfulOperation)
@@ -289,9 +339,9 @@ public class SPARQL extends ProcessorBase implements Loadable
         
     }
     
-    protected QueryExecution getQueryExecution(Query query, Dataset dataset)
+    protected QueryExecution getQueryExecution(Query query, Dataset dataset, QuerySolutionMap qsm)
     {
-        return QueryExecutionFactory.create(query, dataset) ;
+        return QueryExecutionFactory.create(query, dataset, qsm) ;
     }
     
     private void executeQuery(Query query, String queryStringLog, QueryExecution qexec, Response response)
