@@ -288,6 +288,7 @@ public class SPARQL extends ProcessorBase implements Loadable
                 String value = request.getParam(param);
                 String typeStr = request.getParam(param + "_type");
                 RDFDatatype type = null;
+                RDFNode lit = null;
                 if (typeStr == null)
                     ;
                 else if (typeStr.equals("string"))
@@ -308,12 +309,14 @@ public class SPARQL extends ProcessorBase implements Loadable
                     type = XSDDatatype.XSDfloat;
                 else if (typeStr.equals("double"))
                     type = XSDDatatype.XSDdouble;
+                else if (typeStr.equals("uri"))
+                    lit = dataset.getDefaultModel().createResource(value);
 
-                Literal lit = null;
-                if (type == null)
+                if (lit == null && type == null)
                     lit = dataset.getDefaultModel().createLiteral(value, false);
-                else
+                else if (lit == null)
                     lit = dataset.getDefaultModel().createTypedLiteral(value, type);
+
                 qsm.add(param, lit);
             }
         }
